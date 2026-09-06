@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iteris-agent · 渗透测试 AI Agent</title>
+<meta name="description" content="本地 AI Agent：真实调用大模型，支持记忆系统、任务规划、工具调用、反思重规划、人机确认、运行日志与文件化配置管理。">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ===== 项目侧边栏 ===== -->
+<aside class="sidebar">
+  <div class="sb-head"><span>项目</span><span class="sb-hint" id="sbCount">0</span></div>
+  <div class="sb-list" id="projectList"></div>
+  <div class="sb-tip">每个项目独立保存对话、记忆、知识库、工具库、MCP 配置与日志，任务数据互相隔离。</div>
+  <div class="sb-foot">
+    <button class="sb-new" id="btnProjNewSide" type="button">＋ 新建项目</button>
+  </div>
+</aside>
+
+<div class="main-col">
+
+<!-- ===== Header ===== -->
+<header class="head">
+  <div class="brand">
+    <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 3v4h-4"/></svg></span>
+    <span class="t">iteris-agent<small>渗透测试 AI Agent · 本地部署</small></span>
+  </div>
+  <div class="head-actions">
+    <button class="proj-chip" id="projChip" type="button" title="切换项目">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+      <b id="projName">默认项目</b>
+    </button>
+    <span class="status warn" id="statusBadge"><span class="dot"></span><span id="statusText">初始化</span></span>
+    <button class="head-btn" id="btnObs" type="button" title="Agent 观测台" aria-label="Agent 观测台">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15l3.5-3.5"/><path d="M20.3 18a10 10 0 1 0-16.6 0"/></svg>
+    </button>
+    <button class="head-btn" id="btnLogs" type="button" title="运行日志" aria-label="运行日志">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+    </button>
+    <button class="head-btn" id="btnTools" type="button" title="渗透工具库" aria-label="渗透工具库">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </button>
+    <button class="head-btn" id="btnMem" type="button" title="记忆与知识库" aria-label="记忆与知识库">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    </button>
+    <button class="head-btn" id="btnSettings" type="button" title="设置" aria-label="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button class="head-btn" id="btnClear" type="button" title="清空对话" aria-label="清空对话">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ===== 任务状态条 ===== -->
+<div class="taskbar" id="taskBar" hidden>
+  <span class="tb-dot"></span>
+  <span id="taskText">准备中</span>
+  <span class="tb-flag" id="taskFlag" hidden></span>
+  <span class="tb-meta" id="taskMeta"></span>
+</div>
+
+<!-- ===== 消息区 ===== -->
+<main class="chat" id="chat">
+  <div class="chat-in" id="chatIn"></div>
+</main>
+
+<!-- ===== 输入区 ===== -->
+<div class="composer">
+  <div class="composer-in">
+    <div class="box">
+      <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行…" aria-label="消息输入框"></textarea>
+    </div>
+    <button class="send-btn" id="btnSend" type="button" aria-label="发送">
+      <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    </button>
+  </div>
+  <div class="hint" id="modeHint">检测存储模式…</div>
+</div>
+
+<!-- ===== 通用遮罩 ===== -->
+<div class="overlay" id="overlay"></div>
+
+</div><!-- /main-col -->
+</div><!-- /layout -->
+
+<!-- ===== 项目抽屉（移动端/列表管理） ===== -->
+<aside class="drawer" id="drawerProj" aria-label="项目管理">
+  <div class="drawer-head">
+    <h2>项目</h2>
+    <button class="close" id="btnCloseProj" type="button" aria-label="关闭项目列表">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="note" style="margin-bottom:12px">每个项目独立保存对话、记忆、知识库、工具库、MCP 配置与审计日志，测试任务数据互相隔离。任务运行中不可切换项目。</div>
+    <div class="mem-list" id="projDrawerList"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" id="btnProjNew" type="button">＋ 新建项目</button>
+  </div>
+</aside>
+
+<!-- ===== 删除项目确认弹窗 ===== -->
+<div class="confirm-mask" id="delMask" hidden>
+  <div class="confirm-box" role="dialog" aria-modal="true" aria-label="删除项目确认">
+    <h3 id="delTitle">删除项目</h3>
+    <div class="del-warn" id="delWarn"></div>
+    <p id="delText"></p>
+    <div class="cm-actions">
+      <button class="btn ghost" id="delCancel" type="button">取消</button>
+      <button class="btn" id="delOk" type="button" style="background:var(--accent-deep)">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 轻提示 ===== -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== 设置抽屉 ===== -->
+<aside class="drawer" id="drawer" aria-label="设置面板">
+  <div class="drawer-head">
+    <h2>连接与行为设置</h2>
+    <button class="close" id="btnClose" type="button" aria-label="关闭设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="field-sect">模型连接</div>
+    <div class="field">
+      <div class="desc">API 密钥已由 Python 后端统一管理（backend/config.json 或环境变量 LLM_API_KEY），不再下发浏览器；LLM 请求经后端 /api/proxy/llm 代理转发。</div>
+    </div>
+    <div class="field">
+      <label for="fBase">接口地址 Base URL</label>
+      <input type="text" id="fBase" placeholder="https://api.deepseek.com">
+    </div>
+    <div class="field">
+      <label for="fModel">模型名称</label>
+      <input type="text" id="fModel" placeholder="deepseek-chat">
+    </div>
+    <div class="field">
+      <label for="fTemp">温度（随机性）</label>
+      <div class="range-row">
+        <input type="range" id="fTemp" min="0" max="2" step="0.1" value="0.7">
+        <output id="fTempOut">0.7</output>
+      </div>
+    </div>
+
+    <div class="field-sect">角色设定</div>
+    <div class="field">
+      <label>系统提示词预设</label>
+      <div class="radio-row" id="presets">
+        <button class="preset on" type="button" data-p="agent">Agent 助手</button>
+        <button class="preset" type="button" data-p="team">多角色团队</button>
+        <button class="preset" type="button" data-p="pentest">渗透测试</button>
+        <button class="preset" type="button" data-p="plain">简洁助手</button>
+        <button class="preset" type="button" data-p="translate">翻译助手</button>
+      </div>
+      <textarea id="fPrompt" style="margin-top:10px"></textarea>
+    </div>
+
+    <div class="field-sect">工具与规划</div>
+    <div class="field">
+      <div class="switch-row">
+        <span class="l">时间查询工具<small>get_current_time</small></span>
+        <button class="switch on" id="fToolTime" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">数学计算工具<small>calculator</small></span>
+        <button class="switch on" id="fToolCalc" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">任务规划（拆解复杂目标）<small>关闭 / 自动 / 总是</small></span>
+        <select id="fPlan" style="width:132px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+          <option value="off">关闭</option>
+          <option value="auto" selected>自动</option>
+          <option value="on">总是</option>
+        </select>
+      </div>
+      <div class="switch-row">
+        <span class="l">工具调用前询问<small>人机确认 Human-in-the-Loop</small></span>
+        <button class="switch" id="fConfirm" type="button" role="switch" aria-checked="false"></button>
+      </div>
+    </div>
+
+    <div class="field-sect">输出与反思</div>
+    <div class="field">
+      <div class="switch-row">
+        <span class="l">回复格式<small>自然语言 / 结构化 JSON</small></span>
+        <select id="fFormat" style="width:132px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+          <option value="nl" selected>自然语言</option>
+          <option value="json">结构化 JSON</option>
+        </select>
+      </div>
+      <div class="switch-row">
+        <span class="l">标注置信度<small>不确定的结论标 高/中/低</small></span>
+        <button class="switch" id="fConfidence" type="button" role="switch" aria-checked="false"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">显示思考过程<small>气泡内展示推理片段</small></span>
+        <button class="switch on" id="fShowReasoning" type="button" role="switch" aria-checked="true"></button>
+      </div>
+    </div>
+
+    <div class="field-sect">检索与注入</div>
+    <div class="field">
+      <div class="switch-row">
+        <span class="l">长期记忆检索<small>按相关性注入用户历史偏好</small></span>
+        <button class="switch on" id="fMemOn" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">知识库 RAG 检索<small>按需召回片段作为事实依据</small></span>
+        <button class="switch on" id="fKbOn" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">工具库注入<small>内置/自定义工具清单进上下文</small></span>
+        <button class="switch on" id="fToolsOn" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">渗透技能注入（Skills）<small>按任务语义召回技能库，参考步骤/经验/踩坑</small></span>
+        <button class="switch on" id="fSkillsOn" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row">
+        <span class="l">MCP 自动重连<small>页面加载时自动连接已配置服务</small></span>
+        <button class="switch on" id="fAutoMcp" type="button" role="switch" aria-checked="true"></button>
+      </div>
+    </div>
+
+    <div class="field-sect">运行参数</div>
+    <div class="field">
+      <div class="switch-row">
+        <span class="l">最大循环轮次<small>防止无限循环</small></span>
+        <input type="number" id="fRounds" min="2" max="10" value="6" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">失败自动重试<small>接口请求失败时重试次数</small></span>
+        <input type="number" id="fRetries" min="0" max="3" value="1" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">上下文保留条数<small>超出自动裁剪早期消息，防上下文爆炸</small></span>
+        <input type="number" id="fCtx" min="10" max="60" step="5" value="30" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">知识库召回条数<small>RAG 每次注入的片段数（1-6）</small></span>
+        <input type="number" id="fKbTopK" min="1" max="6" value="3" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">记忆召回条数<small>长期记忆每次注入条数（1-6）</small></span>
+        <input type="number" id="fMemTopK" min="1" max="6" value="3" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">反思触发阈值<small>连续工具失败达到后停止并反思</small></span>
+        <input type="number" id="fReflStreak" min="1" max="4" value="2" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+      <div class="switch-row">
+        <span class="l">日志上限<small>运行日志最多保留条数</small></span>
+        <input type="number" id="fLogCap" min="100" max="500" step="50" value="300" style="width:72px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+      </div>
+    </div>
+
+    <div class="note">
+      <b>安全与机制说明</b>：页面内置防护层——忽略对话中试图改变系统设定的注入指令；事实类问题优先使用工具返回的真实结果；信息不足时先询问；工具多次失败会自动终止并总结原因；每次 API 调用、工具执行、记忆检索都会写入运行日志。
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" id="btnSave" type="button">保存设置</button>
+    <button class="btn ghost" id="btnDefault" type="button">恢复默认</button>
+  </div>
+</aside>
+
+<!-- ===== 日志抽屉 ===== -->
+<aside class="drawer" id="drawerLogs" aria-label="运行日志">
+  <div class="drawer-head">
+    <h2>运行日志（可观测性）</h2>
+    <button class="close" id="btnCloseLogs" type="button" aria-label="关闭日志">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="note" style="margin-bottom:14px">记录接口请求、工具调用、记忆检索、任务规划、错误与重试。日志上限 300 条，自动保留最新。</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn ghost" id="btnClearLogs" type="button">清空日志</button>
+  </div>
+</aside>
+
+<!-- ===== 记忆 / 知识库抽屉 ===== -->
+<aside class="drawer" id="drawerMem" aria-label="记忆与知识库">
+  <div class="drawer-head">
+    <h2>记忆与知识库</h2>
+    <button class="close" id="btnCloseMem" type="button" aria-label="关闭记忆面板">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="mem-tabs">
+      <button type="button" id="tabMemory" class="on">长期记忆</button>
+      <button type="button" id="tabKb">知识库</button>
+    </div>
+
+    <div id="memPane">
+      <div class="mem-desc">长期记忆保存跨会话的用户偏好与事实，发送消息时按相关性自动召回并注入上下文（按需检索，不全量灌入）。删除条目即遗忘。</div>
+      <div class="mem-add">
+        <textarea id="memInput" placeholder="例如：我在备考 CISP，希望解释尽量结合网络安全场景…"></textarea>
+        <button class="btn ghost" id="btnMemAdd" type="button">添加记忆条目</button>
+      </div>
+      <div class="mem-list" id="memList"></div>
+    </div>
+
+    <div id="kbPane" hidden>
+      <div class="mem-desc">知识库（简易 RAG）：添加内部资料，导入时按约 180 字自动分块索引；提问时用 BM25 打分召回最相关片段（条数可在设置调整）注入上下文作为事实依据，引用带【来源】标注，减少幻觉。</div>
+      <div class="mem-add">
+        <input type="text" id="kbTitle" placeholder="条目标题，如：CISP 考试大纲要点">
+        <textarea id="kbContent" placeholder="条目内容，粘贴笔记/资料原文（超过约 180 字将自动分块索引）…"></textarea>
+        <button class="btn ghost" id="btnKbAdd" type="button">添加知识条目</button>
+      </div>
+      <div class="mem-list" id="kbList"></div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn ghost" id="btnClearMem" type="button">清空当前面板数据</button>
+  </div>
+</aside>
+
+<!-- ===== 观测台抽屉 ===== -->
+<aside class="drawer" id="drawerObs" aria-label="Agent 观测台">
+  <div class="drawer-head">
+    <h2>Agent 观测台</h2>
+    <button class="close" id="btnCloseObs" type="button" aria-label="关闭观测台">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="obsBody"></div>
+</aside>
+
+<!-- ===== 工具库抽屉 ===== -->
+<aside class="drawer" id="drawerTools" aria-label="渗透工具库">
+  <div class="drawer-head">
+    <h2>渗透工具库</h2>
+    <button class="close" id="btnCloseTools" type="button" aria-label="关闭工具库">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="tool-tabs">
+      <button class="tool-tab on" id="tabBuiltin" type="button">内置工具</button>
+      <button class="tool-tab" id="tabMcp" type="button">MCP 服务</button>
+      <button class="tool-tab" id="tabSkills" type="button">渗透 Skills</button>
+    </div>
+    <div id="mcpPanel" hidden>
+      <div class="note" style="margin-bottom:12px">MCP（Model Context Protocol）让 Agent 对接外部工具服务，扩展能力边界。可连接本地 stdio 服务（如 <b>npx @modelcontextprotocol/server-xxx</b>）或 Streamable HTTP 服务（如 Burp Suite 的 MCP 桥接）。<b>仅连接你信任的服务</b>。</div>
+      <div id="mcpList"></div>
+      <div class="tool-add" style="margin-top:4px">
+        <div class="ta-h" id="mcpAddToggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          添加 MCP 服务
+        </div>
+        <form id="mcpAddForm" hidden>
+          <input type="text" id="mcName" placeholder="服务名称，如 Burp MCP">
+          <select id="mcTransport">
+            <option value="stdio">stdio（本地命令）</option>
+            <option value="http">Streamable HTTP（URL）</option>
+          </select>
+          <input type="text" id="mcCommand" placeholder="命令，如 npx @modelcontextprotocol/server-everything" style="font-family:var(--font-mono);font-size:12px">
+          <input type="text" id="mcArgs" placeholder="命令参数（空格分隔，可留空）" style="font-family:var(--font-mono);font-size:12px">
+          <input type="text" id="mcUrl" placeholder="HTTP 地址，如 http://127.0.0.1:8080/mcp" style="font-family:var(--font-mono);font-size:12px">
+          <button class="btn" id="btnMcpAdd" type="button">连接该服务</button>
+        </form>
+      </div>
+    </div>
+    <div id="builtinPanel">
+      <div class="note" style="margin-bottom:12px">内置渗透测试常用工具，链接均为<b>官方发布页</b>。点击「下载」打开官网获取安装包；「移除」可删除不需要的工具；也可添加自定义工具。</div>
+      <input type="text" class="tool-search" id="toolSearch" placeholder="搜索工具名称 / 类别 / 用途…">
+      <div class="tool-add">
+        <div class="ta-h" id="toolAddToggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          添加自定义工具
+        </div>
+        <form id="toolAddForm" hidden>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="taName" placeholder="工具名称，如 gobuster" style="flex:1">
+            <select id="taCat" style="width:112px">
+              <option value="信息收集">信息收集</option>
+              <option value="Web 测试">Web 测试</option>
+              <option value="漏洞利用">漏洞利用</option>
+              <option value="口令安全">口令安全</option>
+              <option value="流量分析">流量分析</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <input type="text" id="taUrl" placeholder="官方下载链接，如 https://…">
+          <textarea id="taDesc" placeholder="一句话简介（可选）"></textarea>
+          <button class="btn" id="btnToolAdd" type="button">添加到工具库</button>
+        </form>
+      </div>
+      <div class="tool-grid" id="toolList"></div>
+    </div>
+    <div id="skillsPanel" hidden>
+      <div class="note" style="margin-bottom:12px">渗透技能库（Skills）：沉淀渗透方法论——步骤、经验、踩坑案例，按分类管理。执行渗透任务时按任务语义<b>按需召回</b>相关技能注入上下文（不全量灌入，防止 token 爆炸）；任务结束后可复盘，把新坑新经验沉淀回技能库，形成迭代闭环。<b>技能分「全局库」</b>（多项目共用）<b>与「本项目私有」</b>。</div>
+      <div class="switch-row" style="padding:2px 0 12px;margin-bottom:12px">
+        <span class="l">执行任务时自动加载 Skills<small>按任务语义召回相关技能注入上下文</small></span>
+        <button class="switch on" id="sSkillsOn" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="skill-cats" id="skillCats"></div>
+      <input type="text" class="tool-search" id="skillSearch" placeholder="搜索技能标题 / 步骤 / 经验…">
+      <div class="tool-add">
+        <div class="ta-h" id="skillAddToggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          新增技能（标题 / 分类 / 步骤 / 经验 / 踩坑）
+        </div>
+        <form id="skillForm" hidden>
+          <input type="text" id="skTitle" placeholder="技能标题，如：Nmap 端口服务识别">
+          <div style="display:flex;gap:8px">
+            <select id="skCat" style="flex:1">
+              <option value="信息收集">信息收集</option>
+              <option value="漏洞探测">漏洞探测</option>
+              <option value="漏洞利用">漏洞利用</option>
+              <option value="后渗透">后渗透</option>
+              <option value="报告编写">报告编写</option>
+              <option value="其他">其他</option>
+            </select>
+            <select id="skScope" style="width:150px">
+              <option value="global">保存到全局库</option>
+              <option value="private">保存到本项目私有</option>
+            </select>
+          </div>
+          <textarea id="skSteps" placeholder="步骤：每行一步，如：&#10;nmap -sV -sC -T4 &lt;目标&gt;&#10;根据结果整理服务清单"></textarea>
+          <textarea id="skExp" placeholder="经验（可选）：有效技巧、参数组合、注意事项…"></textarea>
+          <textarea id="skPit" placeholder="踩坑案例（可选）：失败原因、易错点、环境坑…"></textarea>
+          <button class="btn" id="btnSkillSave" type="button">保存技能</button>
+          <button class="btn ghost" id="btnSkillCancel" type="button" hidden>取消编辑</button>
+        </form>
+      </div>
+      <div class="skill-list" id="skillList"></div>
+      <div class="note" style="margin-bottom:12px">复盘优化：任务完成后，点击下方按钮把本次对话日志与工具调用记录交给大模型分析（哪些步骤成功、踩了什么坑、哪些技能需要更新），生成<b>修改建议</b>。<b>AI 只提建议，绝不直接改库</b>——由你逐条确认后才写入技能库。</div>
+      <button class="btn" id="btnSkillOptimize" type="button" style="margin-bottom:12px">AI 生成优化建议</button>
+      <div id="skillSugg"></div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn ghost" id="btnRestoreTools" type="button">恢复默认工具集</button>
+  </div>
+</aside>
+
+<!-- ===== 工具确认弹窗 ===== -->
+<div class="confirm-mask" id="cmMask" hidden>
+  <div class="confirm-box" role="dialog" aria-modal="true" aria-label="工具调用确认">
+    <h3>确认调用工具</h3>
+    <p>模型请求调用以下工具，请确认是否允许执行：</p>
+    <div class="cm-tool">
+      <b id="cmName">tool_name</b>
+      <code id="cmArgs">参数</code>
+    </div>
+    <div class="cm-actions">
+      <button class="btn ghost" id="cmReject" type="button">拒绝</button>
+      <button class="btn" id="cmOk" type="button">批准执行</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/project-store.js"></script>
+<script src="js/mcp-client.js"></script>
+<script src="js/agent-core.js"></script>
+<script src="js/ui-render.js"></script>
+</body>
+</html>

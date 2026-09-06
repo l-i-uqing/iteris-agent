@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# 运行时数据（对话/记忆/日志/技能/工具库——本地持久化，不入库）
+data/
+
+# 后端密钥配置（api_key 存放位，绝不提交）
+backend/config.json
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
