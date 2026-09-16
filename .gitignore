@@ -16,3 +16,7 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Playwright MCP 运行时输出（截图/控制台日志）
+.playwright-mcp/
+
