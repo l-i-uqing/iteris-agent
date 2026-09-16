@@ -357,6 +357,13 @@
     <div id="mcpPanel" hidden>
       <div class="note" style="margin-bottom:12px">MCP（Model Context Protocol）让 Agent 对接外部工具服务，扩展能力边界。可连接本地 stdio 服务（如 <b>npx @modelcontextprotocol/server-xxx</b>）或 Streamable HTTP 服务（如 Burp Suite 的 MCP 桥接）。<b>仅连接你信任的服务</b>。</div>
       <div id="mcpList"></div>
+      <div class="mcp-quick" style="margin:10px 0">
+        <button class="btn" id="btnMcpQuickBrowser" type="button" style="width:100%">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:15px;height:15px;vertical-align:-2px;margin-right:6px"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg>
+          一键接入浏览器控制（Playwright MCP）
+        </button>
+        <div class="note" style="margin-top:6px">点击后自动创建并连接 <code style="font-size:11px">npx -y @playwright/mcp@latest --browser msedge</code>（驱动本机 Edge/Chrome：打开网页、点击、输入、截图、提取文本等），成功后工具出现在上方列表，Agent 即可通过 MCP 操纵浏览器。</div>
+      </div>
       <div class="tool-add" style="margin-top:4px">
         <div class="ta-h" id="mcpAddToggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>

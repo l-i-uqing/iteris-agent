@@ -180,6 +180,25 @@ Python 后端真正负责拉起/管理 MCP 进程：
 
 或远程 MCP（http）：填写 `http://127.0.0.1:8000/mcp` 类地址。配置按项目保存在 `data/projects/<pid>/mcp.json`，切换项目自动断开旧连接并按新项目配置重连。
 
+### 浏览器控制（Playwright MCP）
+
+Agent 可操纵真实浏览器（打开网页、点击、输入、截图、提取文本、管理标签页、抓网络请求等），内置一键接入：
+
+- **UI 入口**：「渗透工具库 → MCP 服务」页点击 **「一键接入浏览器控制（Playwright MCP）」**，自动创建并连接服务 `browser-control`（stdio）
+- **等效手动配置**：
+
+```
+名称：browser-control
+传输：stdio
+命令：npx
+参数：-y @playwright/mcp@latest --browser msedge
+```
+
+- 参数 `--browser msedge` 使用本机 Microsoft Edge（也可换 `chrome` / `--channel chromium`），无需单独安装浏览器；首次连接 npx 会自动下载 MCP 包（需 Node.js 18+）
+- 连接成功后约 **26 个工具**可用：`browser_navigate`、`browser_click`、`browser_type`、`browser_fill_form`、`browser_snapshot`、`browser_find`、`browser_take_screenshot`、`browser_tabs`、`browser_press_key`、`browser_evaluate`、`browser_network_requests` 等
+- Agent 在任务中会自动决定何时调用浏览器工具（打开目标站点 → 快照 → 点击/输入 → 提取结果），执行链路完整记录在观测台
+- 安全提示：浏览器 MCP 会真实操作系统浏览器，建议仅在授权范围内使用，并在「设置」开启「工具调用前询问」
+
 ## 渗透 Skills 技能库（迭代闭环）
 
 「渗透工具库 → 渗透 Skills」标签页沉淀渗透方法论并形成迭代闭环：

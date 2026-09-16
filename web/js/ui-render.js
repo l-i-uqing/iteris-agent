@@ -142,7 +142,8 @@
     }
     list.innerHTML = mcpServers.map(function(s){
       var cls = s.status === "connected" ? "on" : (s.status === "error" ? "err" : "");
-      var meta = s.transport === "stdio" ? (s.command || "") + (s.args && s.args.length ? " " + s.args.join(" ") : "") : (s.url || "");
+      var argTxt = Array.isArray(s.args) ? s.args.join(" ") : String(s.args || "").trim();
+      var meta = s.transport === "stdio" ? ((s.command || "") + (argTxt ? " " + argTxt : "")) : (s.url || "");
       var toolsTxt = s.status === "connected" ? (s.tools.length ? s.tools.length + " 个工具" : "无工具") : "";
       return '<div class="mcp-item">' +
         '<div class="mcp-head"><span class="mcp-name">' + esc(s.name) + '</span>' +
@@ -1095,6 +1096,35 @@
     document.getElementById("mcpPanel").hidden = false;
     document.getElementById("builtinPanel").hidden = true;
     document.getElementById("skillsPanel").hidden = true;
+  });
+  /* 一键接入浏览器控制（Playwright MCP，stdio 驱动本机 Edge/Chrome） */
+  document.getElementById("btnMcpQuickBrowser").addEventListener("click", function(){
+    var btn = document.getElementById("btnMcpQuickBrowser");
+    btn.disabled = true; btn.textContent = "接入中…";
+    fetch("/api/mcp/state?projectId=" + encodeURIComponent(currentProject.id))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var existing = (d.servers || []).filter(function(s){ return s.name === "browser-control"; })[0];
+        var body = existing
+          ? { id: existing.id, projectId: currentProject.id }
+          : { name: "browser-control", transport: "stdio", command: "npx", args: "-y @playwright/mcp@latest --browser msedge", projectId: currentProject.id };
+        return fetch("/api/mcp/connect", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) }).then(function(r){ return r.json(); });
+      })
+      .then(function(d){
+        btn.disabled = false; btn.textContent = "一键接入浏览器控制";
+        if(d.ok){
+          log("sys", "浏览器控制 MCP 已接入（" + d.tools + " 个工具可用：browser_navigate / browser_click / browser_snapshot 等）");
+          toast("浏览器控制 MCP 已接入，Agent 可打开网页、点击、输入、截图");
+        }else{
+          log("err", "浏览器控制 MCP 接入失败：" + (d.error || "未知错误"));
+          toast("浏览器控制 MCP 接入失败：" + (d.error || ""));
+        }
+        loadMcpState();
+      })
+      .catch(function(e){
+        btn.disabled = false; btn.textContent = "一键接入浏览器控制";
+        log("err", "浏览器控制 MCP 请求失败：" + (e && e.message ? e.message : e));
+      });
   });
   document.getElementById("mcpAddToggle").addEventListener("click", function(){
     document.getElementById("mcpAddForm").hidden = !document.getElementById("mcpAddForm").hidden;
