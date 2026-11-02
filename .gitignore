@@ -20,3 +20,15 @@ Thumbs.db
 # Playwright MCP 运行时输出（截图/控制台日志）
 .playwright-mcp/
 
+
+# 靶场 flag/利用链（泄题风险，绝不入库）
+seacms_*.txt
+*_flag*.txt
+flag*.txt
+
+# 第三方工具完整拷贝（sqlmap 有上游仓库，不随本项目推送）
+tools/
+
+# 测试/临时
+*.log
+data/tmp/

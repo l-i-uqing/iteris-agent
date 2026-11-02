@@ -17,6 +17,10 @@ CONFIG_FILE = BACKEND_DIR / "config.json"              # 后端配置（含 API 
 
 PORT = int(os.environ.get("PORT", "8899"))
 
+# 授权白名单总开关：False = 关闭白名单校验（Agent/初扫/shell 对任意目标放行）
+# True  = 启用白名单（需在项目授权列表中添加目标，未授权目标一律拦截）
+AUTHZ_ENABLED = False
+
 DEFAULTS = {
     "api_key": "",
     "base_url": "https://api.deepseek.com",

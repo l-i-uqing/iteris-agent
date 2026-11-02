@@ -381,3 +381,24 @@ input,textarea,select{font-family:inherit;color:inherit}
   .drawer,.overlay{transition:none}
   .chat{scroll-behavior:auto}
 }
+/* ===== 渗透流程面板（六阶段工作流） ===== */
+.flow-strip{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.flow-item{flex:1;min-width:76px;border:1px solid #3a4a5a;border-radius:8px;padding:6px 8px;text-align:center;opacity:.55;background:#111820}
+.flow-item b{display:block;font-size:12px;color:#c9d6e3}
+.flow-item small{display:block;font-size:10px;color:#7f8fa0;margin-top:2px}
+.flow-item em{display:block;font-style:normal;font-size:10px;color:#5a6b7c;margin-top:1px}
+.flow-done{border-color:#2ecc71;opacity:1}
+.flow-done b{color:#2ecc71}
+.flow-failed{border-color:#e74c3c;opacity:1}
+.flow-failed b{color:#e74c3c}
+.flow-skipped{border-color:#f39c12;opacity:.85}
+.flow-skipped b{color:#f39c12}
+.flow-running{border-color:#3498db;opacity:1}
+.flow-running b{color:#3498db}
+.flow-cur{box-shadow:0 0 0 2px rgba(52,152,219,.35)}
+/* ===== 授权范围护栏 ===== */
+.authz-tags{display:flex;flex-wrap:wrap;gap:6px}
+.authz-tag{display:inline-flex;align-items:center;gap:6px;border:1px solid #2ecc71;color:#2ecc71;border-radius:14px;padding:3px 10px;font-size:12px;background:rgba(46,204,113,.08)}
+.authz-tag button{background:none;border:none;color:#2ecc71;font-size:14px;cursor:pointer;padding:0;line-height:1}
+.authz-tag button:hover{color:#fff}
+.authz-empty{font-size:12px;color:#7f8fa0}

@@ -81,6 +81,91 @@
     return list.filter(function(x){ return x.title === title; })[0];
   }
 
+  /* =========================================================
+     16.5 渗透流程面板（六阶段工作流：侦察→扫描→枚举→利用→后渗透→报告）
+     ========================================================= */
+  var FLOW_ST = { pending:"待执行", running:"进行中", done:"完成", failed:"失败", skipped:"跳过" };
+  function loadFlowPanel(){
+    var panel = document.getElementById("flowPanel");
+    if(!panel) return;
+    fetch("/api/workflow/state?projectId=" + encodeURIComponent(currentProject.id))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok || !d.active || !d.workflow){
+          panel.innerHTML = '<div class="obs-card"><h3>渗透流程 <span class="pl-tag">未启动</span></h3>' +
+            '<div class="obs-empty">发送包含渗透目标的任务后，Agent 会按 侦察→扫描→枚举→利用→后渗透→报告 六阶段推进；也可手动启动。</div>' +
+            '<button class="btn ghost" id="btnFlowStart" type="button" style="margin-top:8px">手动启动流程</button></div>';
+          bindFlowStart();
+          return;
+        }
+        var wf = d.workflow;
+        var html = '<div class="obs-card"><h3>渗透流程 <span class="pl-tag">' +
+          (wf.status === "done" ? "已完成" : (wf.status === "interrupted" ? "已中断（可恢复）" : "进行中")) +
+          '</span></h3>';
+        html += '<div class="flow-strip">';
+        wf.phases.forEach(function(ph, i){
+          var cls = "flow-" + (FLOW_ST[ph.status] ? ph.status : "pending");
+          if(i === wf.current && ph.status === "pending") cls += " flow-cur";
+          html += '<div class="flow-item ' + cls + '"><b>' + esc(ph.name) + '</b>' +
+            '<small>' + (FLOW_ST[ph.status] || ph.status) + '</small>' +
+            '<em>' + (ph.tools_used || []).length + ' 次工具</em></div>';
+        });
+        html += '</div>';
+        var cur = wf.phases[wf.current] || wf.phases[wf.phases.length - 1];
+        if(cur){
+          html += '<div class="obs-step" style="margin-top:10px"><span class="cur">当前：' + esc(cur.name) + '</span><br>' +
+            esc(cur.desc) + '<br><small>推荐工具：' + esc((cur.tools || []).join("、")) + '</small></div>';
+        }
+        if(wf.status !== "done"){
+          html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button class="btn ghost" data-flow="' + cur.id + '" data-flow-st="done" type="button">标记完成</button>' +
+            '<button class="btn ghost" data-flow="' + cur.id + '" data-flow-st="failed" type="button">标记失败</button>' +
+            '<button class="btn ghost" data-flow="' + cur.id + '" data-flow-st="skipped" type="button">跳过</button>' +
+            '</div>';
+        }
+        html += '<div style="margin-top:6px;display:flex;gap:6px">' +
+          '<button class="btn ghost" id="btnFlowReset" type="button">重置流程</button>' +
+          (wf.status === "interrupted" ? '<button class="btn" id="btnFlowResume" type="button">恢复流程</button>' : '') +
+          '</div>';
+        html += '</div>';
+        panel.innerHTML = html;
+        bindFlowEvents();
+      }).catch(function(){});
+  }
+  function bindFlowEvents(){
+    var panel = document.getElementById("flowPanel");
+    if(!panel) return;
+    panel.querySelectorAll("[data-flow]").forEach(function(b){
+      b.addEventListener("click", function(){
+        fetch("/api/workflow/advance", { method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ projectId: currentProject.id, phaseId: b.getAttribute("data-flow"), status: b.getAttribute("data-flow-st") }) })
+          .then(function(r){ return r.json(); })
+          .then(function(d){ if(d.ok){ log("plan", "流程推进：" + b.getAttribute("data-flow") + " → " + b.getAttribute("data-flow-st")); } loadFlowPanel(); });
+      });
+    });
+    var reset = document.getElementById("btnFlowReset");
+    if(reset) reset.addEventListener("click", function(){
+      if(!window.confirm("确认重置当前项目的渗透流程？进度将清空。")) return;
+      fetch("/api/workflow/reset", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id }) })
+        .then(function(r){ return r.json(); })
+        .then(function(){ log("plan", "渗透流程已重置"); loadFlowPanel(); });
+    });
+    var resume = document.getElementById("btnFlowResume");
+    if(resume) resume.addEventListener("click", function(){
+      fetch("/api/workflow/start", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id, target: "恢复" }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(d.ok){ log("plan", "流程已恢复"); window.iterisFlowProgress = d.progress || ""; } loadFlowPanel(); });
+    });
+  }
+  function bindFlowStart(){
+    var btn = document.getElementById("btnFlowStart");
+    if(!btn) return;
+    btn.addEventListener("click", function(){
+      fetch("/api/workflow/start", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id, target: "手动启动" }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(d.ok){ log("plan", "渗透流程已启动"); window.iterisFlowProgress = d.progress || ""; } loadFlowPanel(); });
+    });
+  }
   function renderTools(){
     var list = document.getElementById("toolList");
     if(!list) return;
@@ -175,6 +260,8 @@
 
   function renderObs(){
     var body = document.getElementById("obsBody");
+
+
     if(!body) return;
     var dotCls = obsPhase === "done" ? "ok" : (obsPhase === "error" ? "err" : (obsPhase === "idle" ? "" : "live"));
     var lastThinking = "";
@@ -192,6 +279,7 @@
       ["输出格式", settings.format], ["置信度", settings.confidence ? "开" : "关"]
     ];
     body.innerHTML =
+      '<div id="flowPanel"></div>' +
       '<div class="obs-card"><h3>运行状态</h3>' +
         '<div class="obs-phase"><span class="dot ' + dotCls + '"></span><b>' + (PHASE[obsPhase] || obsPhase) + '</b>' +
         '<span>' + (sending ? "任务执行中" : "等待指令") + '</span></div>' +
@@ -332,6 +420,7 @@
       return;
     }
     messages.forEach(function(m){
+      if(m.role === "tool") return; // 工具结果不展开在聊天区（见 assistant 工具卡片与右侧「可观测」面板）
       var el = document.createElement("div");
       el.className = "msg " + m.role;
       var av = m.role === "user"
@@ -371,23 +460,35 @@
           body.appendChild(det);
         }
         var content = document.createElement("div");
-        content.innerHTML = md(m.content);
+        if(!String(m.content || "").trim() && m.toolCalls && m.toolCalls.length){
+          content.innerHTML = '<span class="tc-note">正在调用工具：' + m.toolCalls.map(function(t){ return esc(String(t.name || "")); }).join("、") + '…</span>';
+        }else{
+          content.innerHTML = md(stripDSML(m.content));
+        }
         body.appendChild(content);
         if(m.toolCalls && m.toolCalls.length){
           var chips = document.createElement("div");
           chips.className = "tool-chips";
           m.toolCalls.forEach(function(tc){
+            var tcName = String(tc.name || "");
+            if(/^unknown_/i.test(tcName) || tcName.toLowerCase().indexOf("unknown") >= 0) return; // 跳过无效工具
             var cls = "tool-chip";
             if(tc.status === "running") cls += " running";
             else if(tc.status === "fail") cls += " fail";
             var spinner = tc.status === "running" ? '<span class="spinner"></span>' : "";
-            var result = tc.result !== undefined ? esc(tc.result) : (tc.status === "done" ? "" : "执行中…");
-            var resultLine = result ? '<span>' + result + '</span>' : "";
+            var result = "";
+            if(tc.status === "running") result = "执行中…";
+            else if(tc.status === "fail") result = String(tc.result !== undefined ? tc.result : "失败");
+            // 成功时不在聊天卡片展开结果，完整内容见右侧「可观测」面板
+            if(result.length > 120) result = result.slice(0, 120) + "…";
+            var resultLine = result ? '<span>' + esc(result) + '</span>' : "";
             var chip = document.createElement("div");
             chip.className = cls;
+            var argsStr = String(tc.args || "");
+            if(argsStr.length > 100) argsStr = argsStr.slice(0, 100) + "…";
             chip.innerHTML =
               '<span class="tic">' + toolIcon(tc.name) + '</span>' +
-              '<div class="td"><b>' + esc(tc.name) + ' <span>(' + esc(tc.args) + ')</span></b>' + resultLine + '</div>';
+              '<div class="td"><b>' + esc(tc.name) + ' <span>(' + esc(argsStr) + ')</span></b>' + resultLine + '</div>';
             chips.appendChild(chip);
           });
           body.appendChild(chips);
@@ -467,6 +568,7 @@
   var drawerTools = document.getElementById("drawerTools");
   var drawerObs = document.getElementById("drawerObs");
   var drawerProj = document.getElementById("drawerProj");
+  var drawerPrescan = document.getElementById("drawerPrescan");
 
   function closeAllDrawers(){
     drawer.classList.remove("show");
@@ -475,6 +577,7 @@
     drawerTools.classList.remove("show");
     drawerObs.classList.remove("show");
     drawerProj.classList.remove("show");
+    drawerPrescan.classList.remove("show");
     overlay.classList.remove("show");
   }
   function openDrawer(id){
@@ -497,11 +600,54 @@
       fRounds=document.getElementById("fRounds"), fRetries=document.getElementById("fRetries"),
       fCtx=document.getElementById("fCtx"), fKbTopK=document.getElementById("fKbTopK"),
       fMemTopK=document.getElementById("fMemTopK"), fReflStreak=document.getElementById("fReflStreak"),
-      fLogCap=document.getElementById("fLogCap");
+      fLogCap=document.getElementById("fLogCap"), fAuthz=document.getElementById("fAuthz");
 
   function switchUI(btn, on){
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-checked", on ? "true" : "false");
+  }
+
+  (function(){
+    var st = document.createElement("style");
+    st.textContent = ".prescan-box{display:flex;gap:8px;align-items:center}" +
+      ".ps-sec{margin-bottom:16px}" +
+      ".ps-sec h3{font-size:13px;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line);color:var(--acc);font-weight:600}" +
+      ".ps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}" +
+      ".ps-card{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px}" +
+      ".ps-card b{display:block;margin-bottom:4px}" +
+      ".ps-card .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin:2px 3px 2px 0;background:rgba(0,200,160,.12);color:#22c7a5}" +
+      ".ps-card .warn-tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin:2px 3px 2px 0;background:rgba(255,170,0,.14);color:#ffb020}" +
+      ".ps-badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;margin-left:6px;background:rgba(255,170,0,.14);color:#ffb020}" +
+      ".ps-table{width:100%;border-collapse:collapse;font-size:12px}" +
+      ".ps-table th,.ps-table td{border:1px solid var(--line);padding:5px 8px;text-align:left}" +
+      ".ps-table th{background:var(--bg2);font-weight:600}" +
+      ".ps-verdict{margin:8px 0;padding:8px 10px;border-radius:8px;background:rgba(255,170,0,.1);border:1px solid rgba(255,170,0,.35);color:#ffb020;font-weight:600}" +
+      ".ps-verdict.ok{background:rgba(0,200,160,.08);border-color:rgba(0,200,160,.3);color:#22c7a5}" +
+      ".ps-card{overflow-wrap:break-word;word-break:break-word;line-height:1.6}" +
+      ".ps-card .note{display:inline-block;margin-top:2px}" +
+      ".ps-paths{margin:5px 0 3px;line-height:22px}" +
+      ".ps-path{display:inline-block;vertical-align:middle;background:rgba(120,140,180,.12);color:#8fa3c8;border-radius:4px;padding:1px 6px;margin:1px 4px 1px 0;font-size:11px;word-break:break-all;max-width:100%}" +
+      ".ps-more{display:inline-block;vertical-align:middle;color:#8fa3c8;font-size:11px;margin-left:2px}" +
+      ".ps-table td{word-break:break-all;overflow-wrap:break-word}";
+    document.head.appendChild(st);
+  })();
+
+  /* 授权白名单渲染（后端 /api/authz/list，按项目隔离） */
+  function renderAuthz(){
+    var el = document.getElementById("authzList");
+    if(!el) return;
+    fetch("/api/authz/list?projectId=" + encodeURIComponent(currentProject.id))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok || !d.items || !d.items.length){
+          el.innerHTML = '<span class="authz-empty">尚未配置授权目标——白名单为空时，Agent 对任何外部目标的工具调用都会被拦截。</span>';
+          return;
+        }
+        el.innerHTML = d.items.map(function(it){
+          return '<span class="authz-tag" title="' + esc(it.note || it.type) + '">' + esc(it.target) +
+            '<button type="button" data-del-authz="' + it.id + '" aria-label="删除">×</button></span>';
+        }).join("");
+      }).catch(function(){});
   }
   function syncPresetUI(){
     document.querySelectorAll("#presets .preset").forEach(function(b){
@@ -527,6 +673,7 @@
     switchUI(fToolsOn, settings.toolsOn !== false);
     switchUI(fAutoMcp, settings.autoMcp !== false);
     switchUI(fSkillsOn, settings.skillsOn !== false);
+    switchUI(fAuthz, settings.authzOn !== false);
     fRounds.value = settings.maxRounds;
     fRetries.value = settings.retries;
     fCtx.value = settings.ctxKeep;
@@ -554,6 +701,7 @@
     settings.toolsOn = fToolsOn.classList.contains("on");
     settings.autoMcp = fAutoMcp.classList.contains("on");
     settings.skillsOn = fSkillsOn.classList.contains("on");
+    settings.authzOn = fAuthz.classList.contains("on");
     settings.maxRounds = Math.min(10, Math.max(2, parseInt(fRounds.value, 10) || 6));
     settings.retries = Math.min(3, Math.max(0, parseInt(fRetries.value, 10) || 0));
     settings.ctxKeep = Math.min(60, Math.max(10, parseInt(fCtx.value, 10) || 30));
@@ -604,8 +752,34 @@
 
   function renderMemTabs(){
     var onMem = document.getElementById("tabMemory").classList.contains("on");
+    var onKb = document.getElementById("tabKb").classList.contains("on");
     document.getElementById("memPane").hidden = !onMem;
-    document.getElementById("kbPane").hidden = onMem;
+    document.getElementById("kbPane").hidden = !onKb;
+    document.getElementById("graphPane").hidden = onMem || onKb;
+  }
+
+  /* 漏洞知识图谱渲染（后端 /api/memory/graph） */
+  function renderGraph(){
+    var el = document.getElementById("graphList");
+    if(!el) return;
+    el.innerHTML = '<div class="log-empty">图谱加载中…</div>';
+    fetch("/api/memory/graph").then(function(r){ return r.json(); }).then(function(d){
+      if(!d.ok || !d.nodes || !d.nodes.length){
+        el.innerHTML = '<div class="log-empty">暂无漏洞图谱节点。完成一次「复盘入库」（用户给出正确 payload 后）会自动聚合，也可在下方手动添加。</div>';
+        return;
+      }
+      el.innerHTML = d.nodes.map(function(n){
+        var s = '<div class="mem-item"><div class="mi-h"><b>' + esc(n.vuln_type) + '</b>' +
+          '<span class="mi-meta">成功 ' + n.success_count + ' 次' + (n.human_verified ? ' · 已验证' : '') + (n.cve_id ? ' · ' + esc(n.cve_id) : '') + '</span>' +
+          '<button class="mi-del" type="button" data-del-graph="' + n.id + '">删除</button></div>';
+        if(n.trigger) s += '<p><b>触发：</b>' + esc(n.trigger) + '</p>';
+        if(n.technique && n.technique.length) s += '<p><b>利用：</b>' + esc(n.technique.join(" → ")) + '</p>';
+        if(n.remediation) s += '<p style="color:var(--ok,#2ecc71)"><b>修复：</b>' + esc(n.remediation) + '</p>';
+        return s + '</div>';
+      }).join("");
+    }).catch(function(e){
+      el.innerHTML = '<div class="log-empty">图谱读取失败：' + esc(String(e && e.message || e)) + '</div>';
+    });
   }
 
   /* =========================================================
@@ -631,15 +805,15 @@
     render();
   });
 
-  document.getElementById("btnSettings").addEventListener("click", function(){ fillForm(); openDrawer("drawer"); });
+  document.getElementById("btnSettings").addEventListener("click", function(){ fillForm(); renderAuthz(); openDrawer("drawer"); });
   document.getElementById("btnClose").addEventListener("click", closeAllDrawers);
   document.getElementById("btnLogs").addEventListener("click", function(){ renderLogs(); openDrawer("drawerLogs"); });
   document.getElementById("btnCloseLogs").addEventListener("click", closeAllDrawers);
-  document.getElementById("btnMem").addEventListener("click", function(){ renderMem(); renderMemTabs(); openDrawer("drawerMem"); });
+  document.getElementById("btnMem").addEventListener("click", function(){ renderMem(); renderMemTabs(); renderGraph(); openDrawer("drawerMem"); });
   document.getElementById("btnCloseMem").addEventListener("click", closeAllDrawers);
   document.getElementById("btnTools").addEventListener("click", function(){ renderTools(); renderMcp(); openDrawer("drawerTools"); });
   document.getElementById("btnCloseTools").addEventListener("click", closeAllDrawers);
-  document.getElementById("btnObs").addEventListener("click", function(){ renderObs(); openDrawer("drawerObs"); });
+  document.getElementById("btnObs").addEventListener("click", function(){ renderObs(); loadFlowPanel(); openDrawer("drawerObs"); });
   document.getElementById("btnCloseObs").addEventListener("click", closeAllDrawers);
   overlay.addEventListener("click", closeAllDrawers);
 
@@ -647,6 +821,118 @@
   function openProjDrawer(){ renderProjects(); openDrawer("drawerProj"); }
   document.getElementById("projChip").addEventListener("click", openProjDrawer);
   document.getElementById("btnProjNew").addEventListener("click", createProject);
+  /* ===== 初扫 ===== */
+  var psTarget = document.getElementById("prescanTarget");
+  document.getElementById("btnPrescan").addEventListener("click", function(){
+    openDrawer("drawerPrescan");
+    if(psTarget && !psTarget.value){ psTarget.value = (window.lastTask || "").replace(/^.*?https?:\/\//, "").split(/[\s?]/)[0] || ""; psTarget.focus(); }
+  });
+  document.getElementById("btnClosePrescan").addEventListener("click", closeAllDrawers);
+  document.getElementById("btnPrescanClose").addEventListener("click", closeAllDrawers);
+  document.getElementById("btnPrescanRun").addEventListener("click", runPrescan);
+  function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function runPrescan(){
+    var target = (psTarget ? psTarget.value : "").trim();
+    if(!target){ toast("请输入目标"); return; }
+    var box = document.getElementById("prescanResult");
+    box.innerHTML = '<div class="note">初扫进行中：指纹识别 → CVE 匹配 → 路径浅探测（并发）…</div>';
+    document.getElementById("btnPrescanRun").disabled = true;
+    log("sys", "初扫开始：" + target);
+    fetch("/api/prescan", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id, target: target, maxPaths: 60, mode: (document.getElementById('prescanMode') || {}).value || 'standard' }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        document.getElementById("btnPrescanRun").disabled = false;
+        if(!d.ok){ box.innerHTML = '<div class="ps-verdict">初扫失败：' + esc(d.error || "未知错误") + "</div>"; return; }
+        log("sys", "初扫完成：" + (d.site ? d.site.target : "") + " 判定=" + d.verdict);
+        renderPrescan(box, d);
+      })
+      .catch(function(e){ document.getElementById("btnPrescanRun").disabled = false; box.innerHTML = '<div class="ps-verdict">请求失败：' + esc(e) + "</div>"; });
+  }
+  function renderPrescan(box, d){
+    var h = "";
+    var st = d.site || {};
+    h += '<div class="ps-sec"><h3>目标指纹</h3><div class="ps-card">' +
+      "<b>" + esc(st.target || "") + "（HTTP " + esc(st.status || "?") + "）</b>" +
+      (st.title ? "标题：" + esc(st.title) + "<br>" : "") +
+      (st.server ? "Server：" + esc(st.server) + "<br>" : "") +
+      (st.powered_by ? "X-Powered-By：" + esc(st.powered_by) + "<br>" : "") +
+      (st.components && st.components.length ? "组件指纹：" + st.components.map(function(c){ return '<span class="tag">' + esc(c) + "</span>"; }).join("") : '<span class="note">未识别到已知组件</span>') +
+      "</div></div>";
+    h += '<div class="ps-sec"><h3>CVE 匹配' + (d.cves && d.cves.length ? '<span class="ps-badge">' + d.cves.length + " 个</span>" : "") + '</h3>';
+    if(d.cves && d.cves.length){
+      h += '<table class="ps-table"><tr><th>CVE</th><th>组件/版本</th><th>漏洞类型</th><th>风险</th><th>说明</th></tr>';
+      d.cves.forEach(function(c){
+        h += "<tr><td><b>" + esc(c.cve) + "</b></td><td>" + esc(c.component) + " " + esc(c.version) + "</td><td>" + esc(c.type) + "</td><td>" + esc(c.risk) + "</td><td>" + esc(c.note) + "</td></tr>";
+      });
+      h += "</table>";
+    }else{
+      h += '<div class="note">未匹配到已知高危 CVE（指纹库覆盖常见组件）</div>';
+    }
+    h += "</div>";
+    h += '<div class="ps-sec"><h3>漏洞类型覆盖' + (d.vuln_types && d.vuln_types.length ? '<span class="ps-badge">' + d.vuln_types.length + " 类</span>" : "") + '</h3>';
+    if(d.vuln_types && d.vuln_types.length){
+      h += '<div class="ps-grid">';
+      d.vuln_types.forEach(function(v){
+        var cls = v.verdict.indexOf("迹象") >= 0 ? "warn-tag" : "tag";
+        h += '<div class="ps-card"><b>' + esc(v.type) + ' <span class="' + cls + '">' + esc(v.verdict) + "</span></b>" +
+          (v.owasp ? '<span class="tag">' + esc(v.owasp) + "</span><br>" : "") +
+          "探测点：" + v.probe_points + " 处" + (v.paths && v.paths.length ? '<div class="ps-paths">' + v.paths.slice(0,6).map(function(p){ return '<span class="ps-path">' + esc(p) + "</span>"; }).join("") + (v.paths.length > 6 ? '<span class="ps-more">…等 ' + v.paths.length + " 个</span>" : "") + "</div>" : "") +
+          (v.evidence ? '<br><span class="note">证据：' + esc(v.evidence.length > 60 ? v.evidence.slice(0, 60) + "…" : v.evidence) + "</span>" : "") +
+          (v.cve_hits && v.cve_hits.length ? "<br>CVE：" + v.cve_hits.map(function(c){ return esc(c); }).join("、") : "") +
+          "</div>";
+      });
+      h += "</div>";
+    }else{
+      h += '<div class="note">未发现明显漏洞类型迹象</div>';
+    }
+    h += "</div>";
+    var eps = d.endpoints || [];
+    if(eps.length){
+      var epSignal = eps.filter(function(x){ return x.verdict === "有迹象"; });
+      var epWait = eps.filter(function(x){ return x.verdict === "待验证"; });
+      h += '<div class="ps-sec"><h3>功能点参数探测' +
+        (epSignal.length ? '<span class="ps-badge">' + epSignal.length + " 个有迹象</span>" : "") +
+        (epWait.length ? '<span class="ps-badge" style="background:rgba(90,140,255,.15);color:#7aa5ff">' + epWait.length + " 个待验证</span>" : "") +
+        '</h3>';
+      h += '<table class="ps-table"><tr><th>接口</th><th>方法</th><th>参数</th><th>判定</th><th>说明</th></tr>';
+      eps.forEach(function(e){
+        var cls = e.verdict === "有迹象" ? "warn-tag" : (e.verdict === "待验证" ? "tag" : "note");
+        h += "<tr><td><b>" + esc(e.path) + "</b></td><td>" + esc(e.method) + "</td><td>" +
+          (e.params && e.params.length ? esc(e.params.join(", ")) : "—") + "</td><td>" + '<span class="' + cls + '">' +
+          esc(e.verdict) + "</span></td><td>" +
+          (e.evidence ? esc(e.evidence) : esc(e.note || "")) + "</td></tr>";
+      });
+      h += "</table>";
+    }
+    var reach = (d.reachable_paths || []).filter(function(x){ return x.reachable; });
+    h += '<div class="ps-sec"><h3>接口点 / 功能点排查' + (reach.length ? '<span class="ps-badge">' + reach.length + " 个可达</span>" : "") + '</h3>';
+    if(reach.length){
+      h += '<table class="ps-table"><tr><th>路径</th><th>状态</th><th>标题/特征</th><th>可能漏洞类型</th></tr>';
+      reach.forEach(function(r){
+        var types = (r.types || []).map(function(t){ return '<span class="warn-tag">' + esc(t) + "</span>"; }).join("");
+        h += "<tr><td><b>" + esc(r.path) + "</b></td><td>" + esc(r.status) + "</td><td>" + esc((r.title || "") + (r.features && r.features.length ? " · " + r.features.join(" · ") : "")) + "</td><td>" + (types || '<span class="note">—</span>') + "</td></tr>";
+      });
+      h += "</table>";
+    }else{
+      h += '<div class="note">无可达路径</div>';
+    }
+    h += "</div>";
+    h += '<div class="ps-sec"><h3>结论</h3><div class="ps-verdict' + (d.verdict.indexOf("风险面") >= 0 ? "" : " ok") + '">' + esc(d.verdict) + "</div>";
+    if(d.suspects && d.suspects.length){
+      h += '<div class="ps-grid">';
+      d.suspects.slice(0,8).forEach(function(x){
+        h += '<div class="ps-card"><b>' + esc(x.path) + "（" + esc(x.status) + "）</b>" +
+          x.types.map(function(t){ return '<span class="warn-tag">' + esc(t) + "</span>"; }).join("") +
+          (x.title ? "<br>" + esc(x.title) : "") +
+          (x.evidence ? '<br><span class="note">证据：' + esc(x.evidence.length > 60 ? x.evidence.slice(0, 60) + "…" : x.evidence) + "</span>" : "") +
+          (x.note ? "<br><span class='note'>" + esc(x.note) + "</span>" : "") +
+          "</div>";
+      });
+      h += "</div>";
+    }
+    h += '<div class="note" style="margin-top:8px">' + esc(d.note || "") + "</div></div>";
+    box.innerHTML = h;
+  }
   document.getElementById("btnProjNewSide").addEventListener("click", createProject);
   document.getElementById("btnCloseProj").addEventListener("click", closeAllDrawers);
   function bindProjectList(el){
@@ -697,6 +983,26 @@
   fToolsOn.addEventListener("click", function(){ switchUI(fToolsOn, !fToolsOn.classList.contains("on")); });
   fAutoMcp.addEventListener("click", function(){ switchUI(fAutoMcp, !fAutoMcp.classList.contains("on")); });
   fSkillsOn.addEventListener("click", toggleSkillsOn);
+  fAuthz.addEventListener("click", function(){ switchUI(fAuthz, !fAuthz.classList.contains("on")); });
+  document.getElementById("btnAuthzAdd").addEventListener("click", function(){
+    var t = document.getElementById("authzInput").value.trim();
+    if(!t){ warnInput("authzInput", "请填写授权目标"); return; }
+    fetch("/api/authz/add", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id, target: t }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok){ log("err", "添加授权失败：" + (d.error || "")); return; }
+        document.getElementById("authzInput").value = "";
+        log("sys", "已添加授权目标：" + t);
+        renderAuthz();
+      });
+  });
+  document.getElementById("authzList").addEventListener("click", function(e){
+    var b = e.target.closest("[data-del-authz]");
+    if(!b) return;
+    fetch("/api/authz/remove", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ projectId: currentProject.id, id: b.getAttribute("data-del-authz") }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.ok) log("sys", "已移除授权目标"); renderAuthz(); });
+  });
 
   document.getElementById("btnClearLogs").addEventListener("click", function(){
     logs = [];
@@ -708,12 +1014,21 @@
   document.getElementById("tabMemory").addEventListener("click", function(){
     document.getElementById("tabMemory").classList.add("on");
     document.getElementById("tabKb").classList.remove("on");
+    document.getElementById("tabGraph").classList.remove("on");
     renderMemTabs();
   });
   document.getElementById("tabKb").addEventListener("click", function(){
     document.getElementById("tabKb").classList.add("on");
     document.getElementById("tabMemory").classList.remove("on");
+    document.getElementById("tabGraph").classList.remove("on");
     renderMemTabs();
+  });
+  document.getElementById("tabGraph").addEventListener("click", function(){
+    document.getElementById("tabGraph").classList.add("on");
+    document.getElementById("tabMemory").classList.remove("on");
+    document.getElementById("tabKb").classList.remove("on");
+    renderMemTabs();
+    renderGraph();
   });
 
   document.getElementById("btnMemAdd").addEventListener("click", function(){
@@ -744,10 +1059,12 @@
       memory = [];
       STORE.memory = memory;
       log("mem", "已清空长期记忆");
-    }else{
+    }else if(document.getElementById("tabKb").classList.contains("on")){
       kb = [];
       STORE.kb = kb;
       log("mem", "已清空知识库");
+    }else{
+      log("mem", "漏洞图谱不支持一键清空，请在列表中逐条删除");
     }
     persist();
     renderMem();
@@ -769,6 +1086,41 @@
     persist();
     log("mem", "删除一条知识条目");
     renderMem();
+  });
+
+  document.getElementById("graphList").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-del-graph]");
+    if(!btn) return;
+    var id = btn.getAttribute("data-del-graph");
+    fetch("/api/memory/graph/delete", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ id: id }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        log(d.ok ? "mem" : "err", d.ok ? "已删除图谱节点" : "删除失败：" + (d.error || ""));
+        renderGraph();
+      });
+  });
+  document.getElementById("btnGraphAdd").addEventListener("click", function(){
+    var vuln_type = document.getElementById("graphType").value.trim();
+    if(!vuln_type){ warnInput("graphType", "请填写漏洞类型"); return; }
+    var body = {
+      vuln_type: vuln_type,
+      trigger: document.getElementById("graphTrigger").value.trim(),
+      technique: document.getElementById("graphTechnique").value.split("\n").map(function(x){ return x.trim(); }).filter(function(x){ return x; }),
+      remediation: document.getElementById("graphRemediation").value.trim(),
+      cve_id: document.getElementById("graphCve").value.trim()
+    };
+    fetch("/api/memory/graph/upsert", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok){ log("err", "图谱保存失败：" + (d.error || "未知错误")); return; }
+        log("mem", "图谱节点已保存：" + vuln_type);
+        document.getElementById("graphType").value = "";
+        document.getElementById("graphTrigger").value = "";
+        document.getElementById("graphTechnique").value = "";
+        document.getElementById("graphRemediation").value = "";
+        document.getElementById("graphCve").value = "";
+        renderGraph();
+      });
   });
 
   /* 工具库事件 */
@@ -1107,7 +1459,7 @@
         var existing = (d.servers || []).filter(function(s){ return s.name === "browser-control"; })[0];
         var body = existing
           ? { id: existing.id, projectId: currentProject.id }
-          : { name: "browser-control", transport: "stdio", command: "npx", args: "-y @playwright/mcp@latest --browser msedge", projectId: currentProject.id };
+          : { name: "browser-control", transport: "stdio", command: "npx", args: "-y @playwright/mcp@latest --browser msedge --idle-timeout 0", projectId: currentProject.id };
         return fetch("/api/mcp/connect", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) }).then(function(r){ return r.json(); });
       })
       .then(function(d){

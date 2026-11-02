@@ -17,13 +17,28 @@ FILES = {
     "kb": "kb.json",
     "logs": "logs.json",
     "tools": "tools.json",
+    "assets": "assets.json",
 }
 
 GLOBAL_SKILLS_FILE = config.DATA_DIR / "skills.json"
+GLOBAL_KB_FILE = config.DATA_DIR / "kb_global.json"
 
 
 def global_skills_file():
     return GLOBAL_SKILLS_FILE
+
+
+def global_kb_file():
+    return GLOBAL_KB_FILE
+
+
+def load_global_kb():
+    """全局知识库（跨项目共享的“记住”内容，多项目共用）"""
+    return read_json(GLOBAL_KB_FILE, [])
+
+
+def save_global_kb(items):
+    write_json(GLOBAL_KB_FILE, items)
 
 
 def private_skills_file(pid):
@@ -105,7 +120,7 @@ def load_project_data(pid):
     payload = {}
     for key in FILES:
         payload[key] = read_json(
-            project_file(pid, key), {} if key == "settings" else []
+            project_file(pid, key), {} if key in ("settings", "assets") else []
         )
     payload["fresh"] = is_project_fresh(pid)
     return payload
@@ -116,6 +131,38 @@ def save_project_data(pid, data):
     for key in FILES:
         if key in data and data[key] is not None:
             write_json(project_file(pid, key), data[key])
+
+
+def load_assets(pid):
+    """读取项目资产（初扫沉淀）：[{target,scanned_at,status,components,paths,cves,suspects}]"""
+    a = read_json(project_file(pid, "assets"), [])
+    return a if isinstance(a, list) else []
+
+
+def merge_assets(pid, result):
+    """把初扫结果合并进项目资产（按 target 去重更新，最多保留 20 个目标）"""
+    import time
+    assets = load_assets(pid)
+    site = result.get("site") or {}
+    target = site.get("target") or result.get("target") or ""
+    if not target:
+        return assets
+    entry = {
+        "target": target,
+        "scanned_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": site.get("status"),
+        "components": site.get("components") or [],
+        "paths": [{"path": r["path"], "status": r.get("status")}
+                  for r in result.get("reachable_paths", []) if r.get("reachable")],
+        "cves": [{"cve": c["cve"], "type": c.get("type")} for c in result.get("cves", [])],
+        "suspects": [{"path": s2["path"], "types": s2.get("types", [])}
+                     for s2 in result.get("suspects", [])],
+    }
+    assets = [a for a in assets if a.get("target") != target]
+    assets.insert(0, entry)
+    assets = assets[:20]
+    write_json(project_file(pid, "assets"), assets)
+    return assets
 
 
 def delete_project_files(pid):

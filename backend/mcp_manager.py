@@ -3,7 +3,8 @@
 mcp_manager.py · MCP（Model Context Protocol）服务管理
 - stdio 传输：asyncio 子进程 + JSON-RPC over stdin/stdout（换行帧），初始化→tools/list→tools/call
 - http 传输：Streamable HTTP（POST JSON / SSE 响应，Mcp-Session-Id 会话跟踪）
-- 按项目隔离：每个项目的服务配置与连接状态独立（data/projects/<pid>/mcp.json）
+- 全局共享 + 项目私有：data/mcp.json 为全局服务库（所有项目共享，新增服务默认写入全局）；
+  项目私有服务存 data/projects/<pid>/mcp.json（同 id 覆盖全局），连接状态按项目独立。
 """
 import asyncio
 import json
@@ -16,6 +17,8 @@ from .storage import project_dir, read_json, write_json
 
 TIMEOUT = 30  # 单次 MCP 请求超时（秒）
 
+GLOBAL_MCP_FILE = config.DATA_DIR / "mcp.json"
+
 
 def _gen_id(prefix):
     return prefix + hex(int(time.time() * 1000))[2:] + os.urandom(3).hex()
@@ -27,11 +30,22 @@ class MCPManager:
 
     # ---------------- 配置持久化 ----------------
 
-    def _config_file(self, pid):
-        return project_dir(pid) / "mcp.json"
-
     def _load_config(self, pid):
-        servers = read_json(self._config_file(pid), [])
+        """合并全局共享服务（data/mcp.json）+ 项目私有服务（default 无私有层）"""
+        globals_ = read_json(GLOBAL_MCP_FILE, [])
+        for s in globals_:
+            s["global"] = True
+        privates = []
+        if pid and pid != "default":
+            privates = read_json(project_dir(pid) / "mcp.json", [])
+        for s in privates:
+            s["global"] = False
+        by_id = {}
+        for s in globals_:
+            by_id[s["id"]] = s
+        for s in privates:
+            by_id[s["id"]] = s  # 项目私有同 id 覆盖全局
+        servers = list(by_id.values())
         for s in servers:
             s.setdefault("status", "offline")
             s.setdefault("tools", [])
@@ -45,9 +59,11 @@ class MCPManager:
         return servers
 
     def _save_config(self, pid):
-        cfg = []
+        """全局服务写回 data/mcp.json，项目私有服务写回 data/projects/<pid>/mcp.json"""
+        globals_ = []
+        privates = []
         for s in self._state.get(pid, []):
-            cfg.append({
+            item = {
                 "id": s.get("id"),
                 "name": s.get("name"),
                 "transport": s.get("transport"),
@@ -55,8 +71,12 @@ class MCPManager:
                 "args": s.get("args", []),
                 "url": s.get("url"),
                 "headers": s.get("headers", {}),
-            })
-        write_json(self._config_file(pid), cfg)
+            }
+            (globals_ if s.get("global") else privates).append(item)
+        if globals_:
+            write_json(GLOBAL_MCP_FILE, globals_)
+        if pid and pid != "default":
+            write_json(project_dir(pid) / "mcp.json", privates)
 
     def _list(self, pid):
         if pid not in self._state:
@@ -356,6 +376,7 @@ class MCPManager:
                 "args": new_cfg.get("args") or [],
                 "url": str(new_cfg.get("url") or "").strip(),
                 "headers": new_cfg.get("headers") or {},
+                "global": True,   # 新服务默认全局共享（所有项目可用）
                 "tools": [],
                 "status": "offline",
                 "error": "",
@@ -449,7 +470,11 @@ class MCPManager:
     @staticmethod
     def _text_result(res):
         if isinstance(res, dict) and res.get("isError"):
-            return "错误：MCP 工具返回错误：" + MCPManager._text_result(res)
+            return "错误：MCP 工具返回错误：" + MCPManager._content_text(res)
+        return MCPManager._content_text(res)
+
+    @staticmethod
+    def _content_text(res):
         parts = []
         for c in (res or {}).get("content") or []:
             t = c.get("type")

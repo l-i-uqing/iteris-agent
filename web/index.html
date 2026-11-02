@@ -7,7 +7,7 @@
 <meta name="description" content="本地 AI Agent：真实调用大模型，支持记忆系统、任务规划、工具调用、反思重规划、人机确认、运行日志与文件化配置管理。">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
 
@@ -51,6 +51,9 @@
     </button>
     <button class="head-btn" id="btnSettings" type="button" title="设置" aria-label="设置">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button class="head-btn" id="btnPrescan" type="button" title="初扫：指纹/CVE/接口排查（只判可能性）" aria-label="初扫">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
     </button>
     <button class="head-btn" id="btnClear" type="button" title="清空对话" aria-label="清空对话">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
@@ -264,13 +267,54 @@
       </div>
     </div>
 
+    <div class="field-sect">授权范围护栏</div>
+    <div class="field">
+      <div class="switch-row">
+        <span class="l">启用目标白名单校验<small>工具调用前校验目标授权，未授权立即拦截</small></span>
+        <button class="switch on" id="fAuthz" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="switch-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="authzInput" placeholder="添加授权目标：域名 / IP / CIDR / URL，如 *.example.com" style="flex:1;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:6px 8px;font-size:12.5px">
+          <button class="btn ghost" id="btnAuthzAdd" type="button" style="padding:6px 12px">添加</button>
+        </div>
+        <div class="authz-tags" id="authzList"></div>
+      </div>
+    </div>
+
     <div class="note">
-      <b>安全与机制说明</b>：页面内置防护层——忽略对话中试图改变系统设定的注入指令；事实类问题优先使用工具返回的真实结果；信息不足时先询问；工具多次失败会自动终止并总结原因；每次 API 调用、工具执行、记忆检索都会写入运行日志。
+      <b>安全与机制说明</b>：页面内置防护层——忽略对话中试图改变系统设定的注入指令；事实类问题优先使用工具返回的真实结果；信息不足时先询问；工具多次失败会自动终止并总结原因；授权护栏校验未授权目标直接拦截；每次 API 调用、工具执行、记忆检索都会写入运行日志。
     </div>
   </div>
   <div class="drawer-foot">
     <button class="btn" id="btnSave" type="button">保存设置</button>
     <button class="btn ghost" id="btnDefault" type="button">恢复默认</button>
+  </div>
+</aside>
+
+<!-- ===== 初扫抽屉 ===== -->
+<aside class="drawer" id="drawerPrescan" aria-label="初扫报告">
+  <div class="drawer-head">
+    <h2>初扫报告（指纹 / CVE / 接口排查）</h2>
+    <button class="close" id="btnClosePrescan" type="button" aria-label="关闭初扫">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <div class="prescan-box">
+      <input type="text" id="prescanTarget" placeholder="目标 IP / 域名 / URL，如 http://example.com 或 10.0.0.5" style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--fg);">
+      <select id="prescanMode" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--fg);">
+        <option value="standard">标准(60路径)</option>
+        <option value="quick">快速(20路径)</option>
+        <option value="deep">深度(100路径)</option>
+      </select>
+      <button class="btn" id="btnPrescanRun" type="button">开始初扫</button>
+    </div>
+    <div class="note" style="margin:10px 0">只做可能性判断，不深入利用：指纹识别 → CVE 匹配 → 敏感路径浅探测 → 漏洞类型覆盖统计。初扫同样受项目授权白名单约束。</div>
+    <div id="prescanResult" style="margin-top:8px"></div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn ghost" id="btnPrescanClose" type="button">关闭</button>
   </div>
 </aside>
 
@@ -303,6 +347,7 @@
     <div class="mem-tabs">
       <button type="button" id="tabMemory" class="on">长期记忆</button>
       <button type="button" id="tabKb">知识库</button>
+      <button type="button" id="tabGraph">漏洞图谱</button>
     </div>
 
     <div id="memPane">
@@ -322,6 +367,19 @@
         <button class="btn ghost" id="btnKbAdd" type="button">添加知识条目</button>
       </div>
       <div class="mem-list" id="kbList"></div>
+    </div>
+
+    <div id="graphPane" hidden>
+      <div class="mem-desc">漏洞知识图谱：从经验记忆按漏洞类型自动聚合（触发条件 → 利用方法 → 修复方案 → CVE 对齐），也可手动维护。Agent 解题命中同类经验时，会一并注入修复方案（防御视角）。</div>
+      <div class="mem-add">
+        <input type="text" id="graphType" placeholder="漏洞类型，如：SQL注入 / 命令注入 / XSS">
+        <textarea id="graphTrigger" placeholder="触发条件：什么现象/场景可切入（可空）"></textarea>
+        <textarea id="graphTechnique" placeholder="利用方法步骤，一行一步（可空）"></textarea>
+        <textarea id="graphRemediation" placeholder="修复方案：面向防御者，如 使用参数化查询（可空）"></textarea>
+        <input type="text" id="graphCve" placeholder="关联 CVE 编号，如 CVE-2021-44228（可空）">
+        <button class="btn ghost" id="btnGraphAdd" type="button">新增 / 更新图谱节点</button>
+      </div>
+      <div class="mem-list" id="graphList"></div>
     </div>
   </div>
   <div class="drawer-foot">
@@ -362,7 +420,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:15px;height:15px;vertical-align:-2px;margin-right:6px"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg>
           一键接入浏览器控制（Playwright MCP）
         </button>
-        <div class="note" style="margin-top:6px">点击后自动创建并连接 <code style="font-size:11px">npx -y @playwright/mcp@latest --browser msedge</code>（驱动本机 Edge/Chrome：打开网页、点击、输入、截图、提取文本等），成功后工具出现在上方列表，Agent 即可通过 MCP 操纵浏览器。</div>
+        <div class="note" style="margin-top:6px">点击后自动创建并连接 <code style="font-size:11px">npx -y @playwright/mcp@latest --browser msedge --idle-timeout 0</code>（驱动本机 Edge/Chrome：打开网页、点击、输入、截图、提取文本等；<code style="font-size:11px">--idle-timeout 0</code> 禁用空闲自动关闭，浏览器常驻），成功后工具出现在上方列表，Agent 即可通过 MCP 操纵浏览器。</div>
       </div>
       <div class="tool-add" style="margin-top:4px">
         <div class="ta-h" id="mcpAddToggle">
@@ -472,9 +530,9 @@
   </div>
 </div>
 
-<script src="js/project-store.js"></script>
-<script src="js/mcp-client.js"></script>
-<script src="js/agent-core.js"></script>
-<script src="js/ui-render.js"></script>
+<script src="js/project-store.js?v=10"></script>
+<script src="js/mcp-client.js?v=10"></script>
+<script src="js/agent-core.js?v=10"></script>
+<script src="js/ui-render.js?v=10"></script>
 </body>
 </html>
